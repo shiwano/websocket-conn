@@ -8,7 +8,7 @@ A dead simple WebSocket connection written in Go.
 $ go get github.com/shiwano/websocket-conn
 ```
 
-## Examples
+## Usage
 
 Server:
 
@@ -24,11 +24,7 @@ func main() {
   http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
     c := conn.New()
     c.TextMessageHandler = func(text string) {
-      if text == "How are you?" {
-        c.WriteTextMessage("I'm fine, thank you")
-      } else {
-        c.WriteTextMessage("Ticktack: " + text)
-      }
+      c.WriteTextMessage(text + " World")
     }
     if err := c.UpgradeFromHTTP(w, r); err != nil {
       w.Write([]byte("Error"))
@@ -51,23 +47,16 @@ import (
 
 func main() {
   c := conn.New()
+  textMessageCh := make(chan string)
   c.TextMessageHandler = func(text string) {
-    fmt.Println(text)
+    textMessageCh <- text
   }
   if _, err := c.Connect("ws://localhost:5000", nil); err != nil {
     panic(err)
   }
-  c.WriteTextMessage("How are you?")
-
-  ticker := time.NewTicker(time.Second)
-  defer ticker.Stop()
-
-  for {
-    select {
-    case now := <-ticker.C:
-      c.WriteTextMessage(fmt.Sprintf("%v", now))
-    }
-  }
+  c.WriteTextMessage("Hello")
+  text := <-textMessageCh
+  fmt.Println(text)
 }
 ```
 
