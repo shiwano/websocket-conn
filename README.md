@@ -10,6 +10,27 @@ $ go get github.com/shiwano/websocket-conn
 
 ## Usage
 
+```go
+type Conn struct {
+  Settings             *Settings
+  Dialer               *websocket.Dialer
+  Upgrader             *websocket.Upgrader
+  BinaryMessageHandler func([]byte)
+  TextMessageHandler   func(string)
+  DisconnectHandler    func()
+  ErrorHandler         func(error)
+}
+
+func New() *Conn
+func (c *Conn) Connect(url string, requestHeader http.Header) (*http.Response, error)
+func (c *Conn) UpgradeFromHTTP(responseWriter http.ResponseWriter, request *http.Request) error
+func (c *Conn) Close() error
+func (c *Conn) WriteBinaryMessage(data []byte) error
+func (c *Conn) WriteTextMessage(text string) error
+```
+
+## Examples
+
 Server:
 
 ```go
