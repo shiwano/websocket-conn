@@ -13,8 +13,6 @@ $ go get github.com/shiwano/websocket-conn
 ```go
 type Conn struct {
   Settings             *Settings
-  Dialer               *websocket.Dialer
-  Upgrader             *websocket.Upgrader
   BinaryMessageHandler func([]byte)
   TextMessageHandler   func(string)
   DisconnectHandler    func()
