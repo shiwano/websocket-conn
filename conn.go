@@ -56,9 +56,7 @@ func (c *Conn) Connect(url string, requestHeader http.Header) (*http.Response, e
 		return response, err
 	}
 	c.conn = conn
-
-	go c.writePump()
-	go c.readPump()
+	c.start()
 	return response, nil
 }
 
@@ -79,9 +77,7 @@ func (c *Conn) UpgradeFromHTTP(responseWriter http.ResponseWriter, request *http
 		return err
 	}
 	c.conn = conn
-
-	go c.writePump()
-	go c.readPump()
+	c.start()
 	return nil
 }
 
@@ -98,6 +94,20 @@ func (c *Conn) WriteBinaryMessage(data []byte) error {
 // WriteTextMessage to the peer.
 func (c *Conn) WriteTextMessage(text string) error {
 	return c.postEnvelope(&envelope{websocket.TextMessage, []byte(text)})
+}
+
+func (c *Conn) start() {
+	c.conn.SetReadLimit(c.Settings.MaxMessageSize)
+	c.conn.SetReadDeadline(time.Now().Add(c.Settings.PongWait))
+	c.conn.SetPingHandler(func(string) error {
+		return c.postEnvelope(pongEnvelope)
+	})
+	c.conn.SetPongHandler(func(string) error {
+		return c.conn.SetReadDeadline(time.Now().Add(c.Settings.PongWait))
+	})
+
+	go c.writePump()
+	go c.readPump()
 }
 
 func (c *Conn) postEnvelope(e *envelope) error {
@@ -156,15 +166,6 @@ loop:
 
 func (c *Conn) readPump() {
 	defer c.conn.Close()
-
-	c.conn.SetReadLimit(c.Settings.MaxMessageSize)
-	c.conn.SetReadDeadline(time.Now().Add(c.Settings.PongWait))
-	c.conn.SetPingHandler(func(string) error {
-		return c.postEnvelope(pongEnvelope)
-	})
-	c.conn.SetPongHandler(func(string) error {
-		return c.conn.SetReadDeadline(time.Now().Add(c.Settings.PongWait))
-	})
 
 	for {
 		messageType, data, err := c.conn.ReadMessage()
