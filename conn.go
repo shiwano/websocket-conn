@@ -26,9 +26,9 @@ type Conn struct {
 	DisconnectHandler    func()
 	ErrorHandler         func(error)
 
-	conn     *websocket.Conn
-	envelope chan *envelope
-	mu       *sync.Mutex
+	conn       *websocket.Conn
+	envelopeCh chan *envelope
+	mu         *sync.Mutex
 }
 
 // New creates a Conn.
@@ -41,7 +41,7 @@ func New() *Conn {
 
 // Connect to the peer.
 func (c *Conn) Connect(url string, requestHeader http.Header) (*http.Response, error) {
-	c.envelope = make(chan *envelope, c.Settings.MessageChannelBufferSize)
+	c.envelopeCh = make(chan *envelope, c.Settings.MessageChannelBufferSize)
 
 	dialer := new(websocket.Dialer)
 	dialer.ReadBufferSize = c.Settings.ReadBufferSize
@@ -64,7 +64,7 @@ func (c *Conn) Connect(url string, requestHeader http.Header) (*http.Response, e
 
 // UpgradeFromHTTP upgrades HTTP to WebSocket.
 func (c *Conn) UpgradeFromHTTP(responseWriter http.ResponseWriter, request *http.Request) error {
-	c.envelope = make(chan *envelope, c.Settings.MessageChannelBufferSize)
+	c.envelopeCh = make(chan *envelope, c.Settings.MessageChannelBufferSize)
 
 	upgrader := new(websocket.Upgrader)
 	upgrader.ReadBufferSize = c.Settings.ReadBufferSize
@@ -102,7 +102,7 @@ func (c *Conn) WriteTextMessage(text string) error {
 
 func (c *Conn) postEnvelope(e *envelope) error {
 	select {
-	case c.envelope <- e:
+	case c.envelopeCh <- e:
 		return nil
 	default:
 		return ErrMessageChannelFull
@@ -138,7 +138,7 @@ func (c *Conn) writePump() {
 loop:
 	for {
 		select {
-		case e, ok := <-c.envelope:
+		case e, ok := <-c.envelopeCh:
 			if !ok {
 				c.writeMessage(closeGoingAwayEnvelope)
 				break loop
