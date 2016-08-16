@@ -1,6 +1,9 @@
 package conn
 
 import (
+	"crypto/tls"
+	"net"
+	"net/http"
 	"time"
 )
 
@@ -14,6 +17,22 @@ type Settings struct {
 	MaxMessageSize           int64
 	ReadBufferSize           int
 	WriteBufferSize          int
+	Subprotocols             []string
+
+	DialerSettings   *DialerSettings
+	UpgraderSettings *UpgraderSettings
+}
+
+// DialerSettings represents websocket.Dialer settings.
+type DialerSettings struct {
+	NetDial         func(network, addr string) (net.Conn, error)
+	TLSClientConfig *tls.Config
+}
+
+// UpgraderSettings represents websocket.Upgrader settings.
+type UpgraderSettings struct {
+	Error       func(w http.ResponseWriter, r *http.Request, status int, reason error)
+	CheckOrigin func(r *http.Request) bool
 }
 
 // newDefaultSettings creates default settings.
@@ -26,5 +45,8 @@ func newDefaultSettings() *Settings {
 		MaxMessageSize:           2048,
 		ReadBufferSize:           4096,
 		WriteBufferSize:          4096,
+
+		DialerSettings:   new(DialerSettings),
+		UpgraderSettings: new(UpgraderSettings),
 	}
 }

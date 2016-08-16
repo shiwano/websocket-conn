@@ -20,42 +20,42 @@ var (
 
 // Conn represents a web socket connection.
 type Conn struct {
-	conn                 *websocket.Conn
 	Settings             *Settings
-	Dialer               *websocket.Dialer
-	Upgrader             *websocket.Upgrader
 	BinaryMessageHandler func([]byte)
 	TextMessageHandler   func(string)
 	DisconnectHandler    func()
 	ErrorHandler         func(error)
-	envelope             chan *envelope
-	mu                   *sync.Mutex
+
+	conn     *websocket.Conn
+	envelope chan *envelope
+	mu       *sync.Mutex
 }
 
 // New creates a Conn.
 func New() *Conn {
 	return &Conn{
 		Settings: newDefaultSettings(),
-		Dialer:   new(websocket.Dialer),
-		Upgrader: new(websocket.Upgrader),
 		mu:       new(sync.Mutex),
 	}
 }
 
 // Connect to the peer.
 func (c *Conn) Connect(url string, requestHeader http.Header) (*http.Response, error) {
-	c.Upgrader = nil
 	c.envelope = make(chan *envelope, c.Settings.MessageChannelBufferSize)
-	c.Dialer.ReadBufferSize = c.Settings.ReadBufferSize
-	c.Dialer.WriteBufferSize = c.Settings.WriteBufferSize
-	c.Dialer.HandshakeTimeout = c.Settings.HandshakeTimeout
 
-	conn, response, err := c.Dialer.Dial(url, requestHeader)
+	dialer := new(websocket.Dialer)
+	dialer.ReadBufferSize = c.Settings.ReadBufferSize
+	dialer.WriteBufferSize = c.Settings.WriteBufferSize
+	dialer.HandshakeTimeout = c.Settings.HandshakeTimeout
+	dialer.Subprotocols = c.Settings.Subprotocols
+	dialer.NetDial = c.Settings.DialerSettings.NetDial
+	dialer.TLSClientConfig = c.Settings.DialerSettings.TLSClientConfig
+
+	conn, response, err := dialer.Dial(url, requestHeader)
 	if err != nil {
 		return response, err
 	}
 	c.conn = conn
-	c.conn.SetPingHandler(nil)
 
 	go c.writePump()
 	go c.readPump()
@@ -64,13 +64,17 @@ func (c *Conn) Connect(url string, requestHeader http.Header) (*http.Response, e
 
 // UpgradeFromHTTP upgrades HTTP to WebSocket.
 func (c *Conn) UpgradeFromHTTP(responseWriter http.ResponseWriter, request *http.Request) error {
-	c.Dialer = nil
 	c.envelope = make(chan *envelope, c.Settings.MessageChannelBufferSize)
-	c.Upgrader.ReadBufferSize = c.Settings.ReadBufferSize
-	c.Upgrader.WriteBufferSize = c.Settings.WriteBufferSize
-	c.Upgrader.HandshakeTimeout = c.Settings.HandshakeTimeout
 
-	conn, err := c.Upgrader.Upgrade(responseWriter, request, nil)
+	upgrader := new(websocket.Upgrader)
+	upgrader.ReadBufferSize = c.Settings.ReadBufferSize
+	upgrader.WriteBufferSize = c.Settings.WriteBufferSize
+	upgrader.HandshakeTimeout = c.Settings.HandshakeTimeout
+	upgrader.Subprotocols = c.Settings.Subprotocols
+	upgrader.Error = c.Settings.UpgraderSettings.Error
+	upgrader.CheckOrigin = c.Settings.UpgraderSettings.CheckOrigin
+
+	conn, err := upgrader.Upgrade(responseWriter, request, nil)
 	if err != nil {
 		return err
 	}
