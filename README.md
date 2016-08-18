@@ -1,6 +1,6 @@
 # websocket-conn [![Build Status](https://secure.travis-ci.org/shiwano/websocket-conn.png?branch=master)](http://travis-ci.org/shiwano/websocket-conn)
 
-A dead simple WebSocket connection written in Go.
+:telephone_receiver: A dead simple WebSocket connection written in Go, it's based on [github.com/gorilla/websocket](https://github.com/gorilla/websocket).
 
 ## Installation
 
@@ -61,7 +61,6 @@ package main
 import (
   "fmt"
   "github.com/shiwano/websocket-conn"
-  "time"
 )
 
 func main() {
