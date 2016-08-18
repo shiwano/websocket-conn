@@ -10,10 +10,10 @@ import (
 
 var (
 	// ErrMessageChannelFull is returned when the connection's envelope channel is full.
-	ErrMessageChannelFull = errors.New("Message channel is full")
+	ErrMessageChannelFull = errors.New("websocket-conn: Message channel is full")
 
-	// ErrAlreadyConnected is returned when the connection is already connected.
-	ErrAlreadyConnected = errors.New("Already connected")
+	// ErrAlreadyUsed is returned when the connection is already used.
+	ErrAlreadyUsed = errors.New("websocket-conn: Already used")
 
 	closeEnvelope          = &envelope{websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")}
 	closeGoingAwayEnvelope = &envelope{websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, "")}
@@ -45,7 +45,7 @@ func New() *Conn {
 // Connect to the peer.
 func (c *Conn) Connect(url string, requestHeader http.Header) (*http.Response, error) {
 	if c.conn != nil {
-		return nil, ErrAlreadyConnected
+		return nil, ErrAlreadyUsed
 	}
 	dialer := new(websocket.Dialer)
 	dialer.ReadBufferSize = c.Settings.ReadBufferSize
@@ -67,7 +67,7 @@ func (c *Conn) Connect(url string, requestHeader http.Header) (*http.Response, e
 // UpgradeFromHTTP upgrades HTTP to WebSocket.
 func (c *Conn) UpgradeFromHTTP(responseWriter http.ResponseWriter, request *http.Request) error {
 	if c.conn != nil {
-		return ErrAlreadyConnected
+		return ErrAlreadyUsed
 	}
 	upgrader := new(websocket.Upgrader)
 	upgrader.ReadBufferSize = c.Settings.ReadBufferSize
