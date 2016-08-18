@@ -9,10 +9,10 @@ import (
 )
 
 var (
-	// ErrMessageChannelFull is returned when the connection's envelope channel is full.
+	// ErrMessageChannelFull indicates that the connection's envelope channel is full.
 	ErrMessageChannelFull = errors.New("websocket-conn: Message channel is full")
 
-	// ErrAlreadyUsed is returned when the connection is already used.
+	// ErrAlreadyUsed indicates that the connection is already used.
 	ErrAlreadyUsed = errors.New("websocket-conn: Already used")
 
 	closeEnvelope          = &envelope{websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")}
@@ -21,7 +21,7 @@ var (
 	pongEnvelope           = &envelope{websocket.PongMessage, []byte{}}
 )
 
-// Conn represents a web socket connection.
+// Conn represents a WebSocket connection.
 type Conn struct {
 	Settings             *Settings
 	BinaryMessageHandler func([]byte)
