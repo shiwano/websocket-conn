@@ -1,6 +1,8 @@
 # websocket-conn [![Build Status](https://secure.travis-ci.org/shiwano/websocket-conn.png?branch=master)](http://travis-ci.org/shiwano/websocket-conn)
 
-:telephone_receiver: A dead simple WebSocket connection written in Go, it's based on [github.com/gorilla/websocket](https://github.com/gorilla/websocket).
+> :telephone_receiver: A dead simple WebSocket connection written in Go.
+
+websocket-conn provides you with easy handling for WebSockets, it's based on [github.com/gorilla/websocket](https://github.com/gorilla/websocket).
 
 ## Installation
 
