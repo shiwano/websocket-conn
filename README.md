@@ -21,10 +21,9 @@ type Conn struct {
   ErrorHandler         func(error)
 }
 
-func New() *Conn
+func New(ctx context.Context) *Conn
 func (c *Conn) Connect(url string, requestHeader http.Header) (*http.Response, error)
 func (c *Conn) UpgradeFromHTTP(responseWriter http.ResponseWriter, request *http.Request) error
-func (c *Conn) Close() error
 func (c *Conn) WriteBinaryMessage(data []byte) error
 func (c *Conn) WriteTextMessage(text string) error
 ```
@@ -37,13 +36,15 @@ Server:
 package main
 
 import (
-  "github.com/shiwano/websocket-conn"
+  "context"
   "net/http"
+  "github.com/shiwano/websocket-conn"
 )
 
 func main() {
   http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-    c := conn.New()
+    ctx := context.Background()
+    c := conn.New(ctx)
     c.TextMessageHandler = func(text string) {
       c.WriteTextMessage(text + " World")
     }
@@ -61,13 +62,15 @@ Client:
 package main
 
 import (
+  "context"
   "fmt"
   "github.com/shiwano/websocket-conn"
 )
 
 func main() {
-  c := conn.New()
   textMessageCh := make(chan string)
+  ctx := context.Background()
+  c := conn.New(ctx)
   c.TextMessageHandler = func(text string) {
     textMessageCh <- text
   }

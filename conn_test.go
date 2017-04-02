@@ -2,6 +2,7 @@ package conn
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,13 +17,20 @@ func newTestServer(handler func(http.ResponseWriter, *http.Request)) (*httptest.
 }
 
 func TestConn(t *testing.T) {
+	disconnectedCh := make(chan struct{})
+	textMessageCh := make(chan string)
+	binaryMessageCh := make(chan []byte)
+
 	ts, url := newTestServer(func(w http.ResponseWriter, r *http.Request) {
-		c2 := New()
+		c2 := New(context.Background())
 		c2.TextMessageHandler = func(text string) {
 			c2.WriteTextMessage(text + " PONG")
 		}
 		c2.BinaryMessageHandler = func(data []byte) {
 			c2.WriteBinaryMessage(append(data, 4, 5, 6))
+		}
+		c2.DisconnectHandler = func() {
+			disconnectedCh <- struct{}{}
 		}
 
 		if err := c2.UpgradeFromHTTP(w, r); err != nil {
@@ -31,11 +39,8 @@ func TestConn(t *testing.T) {
 	})
 	defer ts.Close()
 
-	textMessageCh := make(chan string)
-	binaryMessageCh := make(chan []byte)
-	disconnectedCh := make(chan struct{})
-
-	c := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	c := New(ctx)
 	c.TextMessageHandler = func(t string) { textMessageCh <- t }
 	c.BinaryMessageHandler = func(d []byte) { binaryMessageCh <- d }
 	c.DisconnectHandler = func() { disconnectedCh <- struct{}{} }
@@ -56,6 +61,7 @@ func TestConn(t *testing.T) {
 		t.Error(fmt.Errorf("Failed to send or receive a binary message: %v", binaryMessage))
 	}
 
-	c.Close()
+	cancel()
+	<-disconnectedCh
 	<-disconnectedCh
 }

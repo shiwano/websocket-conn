@@ -1,13 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"github.com/shiwano/websocket-conn"
 	"time"
+
+	"github.com/shiwano/websocket-conn"
 )
 
 func main() {
-	c := conn.New()
+	c := conn.New(context.Background())
 	c.TextMessageHandler = func(text string) {
 		fmt.Println(text)
 	}

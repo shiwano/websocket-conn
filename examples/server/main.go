@@ -1,13 +1,15 @@
 package main
 
 import (
-	"github.com/shiwano/websocket-conn"
+	"context"
 	"net/http"
+
+	"github.com/shiwano/websocket-conn"
 )
 
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		c := conn.New()
+		c := conn.New(context.Background())
 		c.TextMessageHandler = func(text string) {
 			if text == "How are you?" {
 				c.WriteTextMessage("I'm fine, thank you")

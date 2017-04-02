@@ -1,11 +1,12 @@
 package conn
 
 import (
+	"context"
 	"errors"
-	"github.com/gorilla/websocket"
 	"net/http"
-	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 var (
@@ -31,14 +32,15 @@ type Conn struct {
 
 	conn       *websocket.Conn
 	envelopeCh chan *envelope
-	mu         *sync.Mutex
+	errorCh    chan error
+	ctx        context.Context
 }
 
 // New creates a Conn.
-func New() *Conn {
+func New(ctx context.Context) *Conn {
 	return &Conn{
 		Settings: newDefaultSettings(),
-		mu:       new(sync.Mutex),
+		ctx:      ctx,
 	}
 }
 
@@ -86,11 +88,6 @@ func (c *Conn) UpgradeFromHTTP(responseWriter http.ResponseWriter, request *http
 	return nil
 }
 
-// Close the connection.
-func (c *Conn) Close() error {
-	return c.postEnvelope(closeEnvelope)
-}
-
 // WriteBinaryMessage to the peer.
 func (c *Conn) WriteBinaryMessage(data []byte) error {
 	return c.postEnvelope(&envelope{websocket.BinaryMessage, data})
@@ -102,6 +99,7 @@ func (c *Conn) WriteTextMessage(text string) error {
 }
 
 func (c *Conn) start() {
+	c.errorCh = make(chan error, 1)
 	c.envelopeCh = make(chan *envelope, c.Settings.MessageChannelBufferSize)
 
 	c.conn.SetReadLimit(c.Settings.MaxMessageSize)
@@ -128,22 +126,12 @@ func (c *Conn) postEnvelope(e *envelope) error {
 
 func (c *Conn) writeMessage(e *envelope) error {
 	if err := c.conn.SetWriteDeadline(time.Now().Add(c.Settings.WriteWait)); err != nil {
-		c.handleError(err)
 		return err
 	}
 	if err := c.conn.WriteMessage(e.messageType, e.data); err != nil {
-		c.handleError(err)
 		return err
 	}
 	return nil
-}
-
-func (c *Conn) handleError(err error) {
-	if err != nil && c.ErrorHandler != nil {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.ErrorHandler(err)
-	}
 }
 
 func (c *Conn) writePump() {
@@ -155,16 +143,27 @@ func (c *Conn) writePump() {
 loop:
 	for {
 		select {
+		case <-c.ctx.Done():
+			if err := c.writeMessage(closeEnvelope); err != nil {
+				c.errorCh <- err
+			} else if err := c.ctx.Err(); err != nil {
+				c.errorCh <- err
+			}
+			break loop
 		case e, ok := <-c.envelopeCh:
 			if !ok {
-				c.writeMessage(closeGoingAwayEnvelope)
+				if err := c.writeMessage(closeGoingAwayEnvelope); err != nil {
+					c.errorCh <- err
+				}
 				break loop
 			}
 			if err := c.writeMessage(e); err != nil {
+				c.errorCh <- err
 				break loop
 			}
 		case <-ticker.C:
 			if err := c.writeMessage(pingEnvelope); err != nil {
+				c.errorCh <- err
 				break loop
 			}
 		}
@@ -174,21 +173,32 @@ loop:
 func (c *Conn) readPump() {
 	defer c.conn.Close()
 
+loop:
 	for {
-		messageType, data, err := c.conn.ReadMessage()
-		if err != nil {
-			c.handleError(err)
-			break
-		}
-
-		switch messageType {
-		case websocket.BinaryMessage:
-			if c.BinaryMessageHandler != nil {
-				c.BinaryMessageHandler(data)
+		select {
+		case err := <-c.errorCh:
+			if c.ErrorHandler != nil {
+				c.ErrorHandler(err)
 			}
-		case websocket.TextMessage:
-			if c.TextMessageHandler != nil {
-				c.TextMessageHandler(string(data))
+			break loop
+		default:
+			messageType, data, err := c.conn.ReadMessage()
+			if err != nil {
+				if c.ErrorHandler != nil {
+					c.ErrorHandler(err)
+				}
+				break loop
+			}
+
+			switch messageType {
+			case websocket.BinaryMessage:
+				if c.BinaryMessageHandler != nil {
+					c.BinaryMessageHandler(data)
+				}
+			case websocket.TextMessage:
+				if c.TextMessageHandler != nil {
+					c.TextMessageHandler(string(data))
+				}
 			}
 		}
 	}
