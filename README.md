@@ -7,7 +7,7 @@ websocket-conn provides you with easy handling for WebSockets, it's based on [gi
 ## Installation
 
 ```bash
-$ go get github.com/shiwano/websocket-conn
+$ go get -u github.com/shiwano/websocket-conn
 ```
 
 ## Usage
