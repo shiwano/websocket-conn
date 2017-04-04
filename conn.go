@@ -140,7 +140,6 @@ func (c *Conn) writePump() {
 	ticker := time.NewTicker(c.Settings.PingPeriod)
 	defer ticker.Stop()
 
-loop:
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -149,22 +148,22 @@ loop:
 			} else if err := c.ctx.Err(); err != nil {
 				c.errorCh <- err
 			}
-			break loop
+			return
 		case e, ok := <-c.envelopeCh:
 			if !ok {
 				if err := c.writeMessage(closeGoingAwayEnvelope); err != nil {
 					c.errorCh <- err
 				}
-				break loop
+				return
 			}
 			if err := c.writeMessage(e); err != nil {
 				c.errorCh <- err
-				break loop
+				return
 			}
 		case <-ticker.C:
 			if err := c.writeMessage(pingEnvelope); err != nil {
 				c.errorCh <- err
-				break loop
+				return
 			}
 		}
 	}
