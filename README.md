@@ -17,8 +17,7 @@ type Conn struct {
   Settings             *Settings
   BinaryMessageHandler func([]byte)
   TextMessageHandler   func(string)
-  DisconnectHandler    func()
-  ErrorHandler         func(error)
+  DisconnectionHandler func(error)
 }
 
 func New(ctx context.Context) *Conn
@@ -45,9 +44,7 @@ func main() {
   http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
     ctx := context.Background()
     c := conn.New(ctx)
-    c.TextMessageHandler = func(text string) {
-      c.WriteTextMessage(text + " World")
-    }
+    c.TextMessageHandler = func(text string) { c.WriteTextMessage(text + " World") }
     if err := c.UpgradeFromHTTP(w, r); err != nil {
       w.Write([]byte("Error"))
     }
@@ -71,15 +68,13 @@ func main() {
   textMessageCh := make(chan string)
   ctx := context.Background()
   c := conn.New(ctx)
-  c.TextMessageHandler = func(text string) {
-    textMessageCh <- text
-  }
+  c.TextMessageHandler = func(text string) { textMessageCh <- text }
   if _, err := c.Connect("ws://localhost:5000", nil); err != nil {
     panic(err)
   }
   c.WriteTextMessage("Hello")
   text := <-textMessageCh
-  fmt.Println(text)
+  fmt.Println(text) // Hello World
 }
 ```
 

@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gorilla/websocket"
 )
 
 func newTestServer(handler func(http.ResponseWriter, *http.Request)) (*httptest.Server, string) {
@@ -17,21 +19,17 @@ func newTestServer(handler func(http.ResponseWriter, *http.Request)) (*httptest.
 }
 
 func TestConn(t *testing.T) {
-	disconnectedCh := make(chan struct{})
+	serverDisconnectionCh := make(chan error)
+	clientDisconnectionCh := make(chan error)
 	textMessageCh := make(chan string)
 	binaryMessageCh := make(chan []byte)
+	rootCtx := context.Background()
 
 	ts, url := newTestServer(func(w http.ResponseWriter, r *http.Request) {
-		c2 := New(context.Background())
-		c2.TextMessageHandler = func(text string) {
-			c2.WriteTextMessage(text + " PONG")
-		}
-		c2.BinaryMessageHandler = func(data []byte) {
-			c2.WriteBinaryMessage(append(data, 4, 5, 6))
-		}
-		c2.DisconnectHandler = func() {
-			disconnectedCh <- struct{}{}
-		}
+		c2 := New(rootCtx)
+		c2.TextMessageHandler = func(t string) { c2.WriteTextMessage(t + " PONG") }
+		c2.BinaryMessageHandler = func(d []byte) { c2.WriteBinaryMessage(append(d, 4, 5, 6)) }
+		c2.DisconnectionHandler = func(err error) { serverDisconnectionCh <- err }
 
 		if err := c2.UpgradeFromHTTP(w, r); err != nil {
 			t.Error(err)
@@ -39,11 +37,11 @@ func TestConn(t *testing.T) {
 	})
 	defer ts.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(rootCtx)
 	c := New(ctx)
 	c.TextMessageHandler = func(t string) { textMessageCh <- t }
 	c.BinaryMessageHandler = func(d []byte) { binaryMessageCh <- d }
-	c.DisconnectHandler = func() { disconnectedCh <- struct{}{} }
+	c.DisconnectionHandler = func(err error) { clientDisconnectionCh <- err }
 
 	if _, err := c.Connect(url, nil); err != nil {
 		t.Error(err)
@@ -62,6 +60,14 @@ func TestConn(t *testing.T) {
 	}
 
 	cancel()
-	<-disconnectedCh
-	<-disconnectedCh
+
+	clientErr := <-clientDisconnectionCh
+	if clientErr.Error() != "context canceled" {
+		t.Error(fmt.Errorf("Unexpected client connection error: %v", clientErr))
+	}
+
+	serverErr := <-serverDisconnectionCh
+	if serverErr.(*websocket.CloseError).Code != websocket.CloseNormalClosure {
+		t.Error(fmt.Errorf("Unexpected server connection error: %v", clientErr))
+	}
 }

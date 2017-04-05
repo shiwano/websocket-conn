@@ -16,10 +16,9 @@ var (
 	// ErrAlreadyUsed indicates that the connection is already used.
 	ErrAlreadyUsed = errors.New("websocket-conn: Already used")
 
-	closeEnvelope          = &envelope{websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")}
-	closeGoingAwayEnvelope = &envelope{websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, "")}
-	pingEnvelope           = &envelope{websocket.PingMessage, []byte{}}
-	pongEnvelope           = &envelope{websocket.PongMessage, []byte{}}
+	closeEnvelope = envelope{websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")}
+	pingEnvelope  = envelope{websocket.PingMessage, []byte{}}
+	pongEnvelope  = envelope{websocket.PongMessage, []byte{}}
 )
 
 // Conn represents a WebSocket connection.
@@ -27,13 +26,13 @@ type Conn struct {
 	Settings             *Settings
 	BinaryMessageHandler func([]byte)
 	TextMessageHandler   func(string)
-	DisconnectHandler    func()
-	ErrorHandler         func(error)
+	DisconnectionHandler func(error)
 
-	conn       *websocket.Conn
-	envelopeCh chan *envelope
-	errorCh    chan error
-	ctx        context.Context
+	conn              *websocket.Conn
+	envelopeCh        chan envelope
+	writePumpFinishCh chan error
+	readPumpFinishCh  chan struct{}
+	ctx               context.Context
 }
 
 // New creates a Conn.
@@ -90,17 +89,18 @@ func (c *Conn) UpgradeFromHTTP(responseWriter http.ResponseWriter, request *http
 
 // WriteBinaryMessage to the peer.
 func (c *Conn) WriteBinaryMessage(data []byte) error {
-	return c.postEnvelope(&envelope{websocket.BinaryMessage, data})
+	return c.postEnvelope(envelope{websocket.BinaryMessage, data})
 }
 
 // WriteTextMessage to the peer.
 func (c *Conn) WriteTextMessage(text string) error {
-	return c.postEnvelope(&envelope{websocket.TextMessage, []byte(text)})
+	return c.postEnvelope(envelope{websocket.TextMessage, []byte(text)})
 }
 
 func (c *Conn) start() {
-	c.errorCh = make(chan error, 1)
-	c.envelopeCh = make(chan *envelope, c.Settings.MessageChannelBufferSize)
+	c.writePumpFinishCh = make(chan error, 1)
+	c.readPumpFinishCh = make(chan struct{}, 1)
+	c.envelopeCh = make(chan envelope, c.Settings.MessageChannelBufferSize)
 
 	c.conn.SetReadLimit(c.Settings.MaxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(c.Settings.PongWait))
@@ -115,7 +115,7 @@ func (c *Conn) start() {
 	go c.readPump()
 }
 
-func (c *Conn) postEnvelope(e *envelope) error {
+func (c *Conn) postEnvelope(e envelope) error {
 	select {
 	case c.envelopeCh <- e:
 		return nil
@@ -124,7 +124,7 @@ func (c *Conn) postEnvelope(e *envelope) error {
 	}
 }
 
-func (c *Conn) writeMessage(e *envelope) error {
+func (c *Conn) writeMessage(e envelope) error {
 	if err := c.conn.SetWriteDeadline(time.Now().Add(c.Settings.WriteWait)); err != nil {
 		return err
 	}
@@ -143,26 +143,22 @@ func (c *Conn) writePump() {
 	for {
 		select {
 		case <-c.ctx.Done():
-			if err := c.writeMessage(closeEnvelope); err != nil {
-				c.errorCh <- err
-			} else if err := c.ctx.Err(); err != nil {
-				c.errorCh <- err
+			err := c.writeMessage(closeEnvelope)
+			if err == nil {
+				err = c.ctx.Err()
 			}
+			c.writePumpFinishCh <- err
 			return
-		case e, ok := <-c.envelopeCh:
-			if !ok {
-				if err := c.writeMessage(closeGoingAwayEnvelope); err != nil {
-					c.errorCh <- err
-				}
-				return
-			}
+		case <-c.readPumpFinishCh:
+			return
+		case e := <-c.envelopeCh:
 			if err := c.writeMessage(e); err != nil {
-				c.errorCh <- err
+				c.writePumpFinishCh <- err
 				return
 			}
 		case <-ticker.C:
 			if err := c.writeMessage(pingEnvelope); err != nil {
-				c.errorCh <- err
+				c.writePumpFinishCh <- err
 				return
 			}
 		}
@@ -171,38 +167,35 @@ func (c *Conn) writePump() {
 
 func (c *Conn) readPump() {
 	defer c.conn.Close()
+	var disconnectionError error
 
-loop:
 	for {
-		select {
-		case err := <-c.errorCh:
-			if c.ErrorHandler != nil {
-				c.ErrorHandler(err)
-			}
-			break loop
-		default:
-			messageType, data, err := c.conn.ReadMessage()
-			if err != nil {
-				if c.ErrorHandler != nil {
-					c.ErrorHandler(err)
-				}
-				break loop
-			}
+		messageType, data, err := c.conn.ReadMessage()
+		if err != nil {
+			disconnectionError = err
+			break
+		}
 
-			switch messageType {
-			case websocket.BinaryMessage:
-				if c.BinaryMessageHandler != nil {
-					c.BinaryMessageHandler(data)
-				}
-			case websocket.TextMessage:
-				if c.TextMessageHandler != nil {
-					c.TextMessageHandler(string(data))
-				}
+		switch messageType {
+		case websocket.BinaryMessage:
+			if c.BinaryMessageHandler != nil {
+				c.BinaryMessageHandler(data)
+			}
+		case websocket.TextMessage:
+			if c.TextMessageHandler != nil {
+				c.TextMessageHandler(string(data))
 			}
 		}
 	}
 
-	if c.DisconnectHandler != nil {
-		c.DisconnectHandler()
+	select {
+	case disconnectionError = <-c.writePumpFinishCh:
+	default:
+		c.readPumpFinishCh <- struct{}{}
 	}
+
+	if c.DisconnectionHandler != nil {
+		c.DisconnectionHandler(disconnectionError)
+	}
+	close(c.envelopeCh)
 }
