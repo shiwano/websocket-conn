@@ -35,9 +35,9 @@ type UpgraderSettings struct {
 	CheckOrigin func(r *http.Request) bool
 }
 
-// newDefaultSettings creates default settings.
-func newDefaultSettings() *Settings {
-	return &Settings{
+// DefaultSettings returns default settings.
+func DefaultSettings() Settings {
+	return Settings{
 		WriteWait:                10 * time.Second,
 		PongWait:                 60 * time.Second,
 		PingPeriod:               54 * time.Second,

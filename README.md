@@ -13,18 +13,15 @@ $ go get -u github.com/shiwano/websocket-conn
 ## Usage
 
 ```go
-type Conn struct {
-  Settings             *Settings
-  BinaryMessageHandler func([]byte)
-  TextMessageHandler   func(string)
-  DisconnectionHandler func(error)
-}
+func Connect(ctx context.Context, settings Settings, url string, requestHeader http.Header) (*Conn *http.Response, error)
+func UpgradeFromHTTP(ctx context.Context, settings Settings, w http.ResponseWriter, r *http.Request) (*Conn, error)
 
-func New(ctx context.Context) *Conn
-func (c *Conn) Connect(url string, requestHeader http.Header) (*http.Response, error)
-func (c *Conn) UpgradeFromHTTP(responseWriter http.ResponseWriter, request *http.Request) error
-func (c *Conn) WriteBinaryMessage(data []byte) error
-func (c *Conn) WriteTextMessage(text string) error
+type Conn struct {
+  Stream() <-chan Data
+  Err() error
+  SendBinaryMessage(data []byte) error
+  SendTextMessage(text string) error
+}
 ```
 
 ## Examples
@@ -35,21 +32,26 @@ Server:
 package main
 
 import (
-  "context"
-  "net/http"
-  "github.com/shiwano/websocket-conn"
+	"context"
+	"net/http"
+	"github.com/shiwano/websocket-conn"
 )
 
 func main() {
-  http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-    ctx := context.Background()
-    c := conn.New(ctx)
-    c.TextMessageHandler = func(text string) { c.WriteTextMessage(text + " World") }
-    if err := c.UpgradeFromHTTP(w, r); err != nil {
-      w.Write([]byte("Error"))
-    }
-  })
-  http.ListenAndServe(":5000", nil)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		c, err := conn.UpgradeFromHTTP(ctx, conn.DefaultSettings(), w, r)
+		if err != nil {
+			w.Write([]byte("Error"))
+			return
+		}
+		d := <-c.Stream()
+		c.SendTextMessage(d.Message.Text() + " World")
+		cancel()
+	})
+	http.ListenAndServe(":5000", nil)
 }
 ```
 
@@ -59,24 +61,28 @@ Client:
 package main
 
 import (
-  "context"
-  "fmt"
-  "github.com/shiwano/websocket-conn"
+	"context"
+	"log"
+	"github.com/shiwano/websocket-conn"
 )
 
 func main() {
-  textMessageCh := make(chan string)
-  ctx := context.Background()
-  c := conn.New(ctx)
-  c.TextMessageHandler = func(text string) { textMessageCh <- text }
-  if _, err := c.Connect("ws://localhost:5000", nil); err != nil {
-    panic(err)
-  }
-  c.WriteTextMessage("Hello")
-  text := <-textMessageCh
-  fmt.Println(text) // Hello World
+	c, _, err := conn.Connect(context.Background(), conn.DefaultSettings(), "ws://localhost:5000", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	c.SendTextMessage("Hello")
+	d := <-c.Stream()
+	log.Println(d.Message.Text()) // Hello World
+	for d := range c.Stream() {
+		if d.EOS {
+			log.Println("Closed: ", c.Err())
+		}
+	}
 }
 ```
+
+See also examples directory.
 
 ## License
 
