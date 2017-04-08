@@ -17,10 +17,10 @@ func Connect(ctx context.Context, settings Settings, url string, requestHeader h
 func UpgradeFromHTTP(ctx context.Context, settings Settings, w http.ResponseWriter, r *http.Request) (*Conn, error)
 
 type Conn struct {
-  Stream() <-chan Data
-  Err() error
-  SendBinaryMessage(data []byte) error
-  SendTextMessage(text string) error
+	Stream() <-chan Data
+	Err() error
+	SendBinaryMessage(data []byte) error
+	SendTextMessage(text string) error
 }
 ```
 
