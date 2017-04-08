@@ -12,7 +12,6 @@ import (
 var (
 	// ErrMessageChannelFull indicates that the connection's message channel is full.
 	ErrMessageChannelFull = errors.New("websocket-conn: Message channel is full")
-	errEndOfStream        = errors.New("websocket-conn: EOS")
 
 	closeMessage = Message{websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")}
 	pingMessage  = Message{websocket.PingMessage, []byte{}}
