@@ -64,10 +64,10 @@ type Conn struct {
 	pingPeriod time.Duration
 	writeWait  time.Duration
 
-	streamCh         chan Data
-	errorCh          chan error
-	sendMessageCh    chan Message
-	readPumpFinishCh chan struct{}
+	streamCh      chan Data
+	readErrorCh   chan error
+	readMessageCh chan Message
+	sendMessageCh chan Message
 }
 
 // Stream retrieve the peer's message data from the stream channel.
@@ -76,7 +76,7 @@ func (c *Conn) Stream() <-chan Data {
 	return c.streamCh
 }
 
-// Err returns the disconnection error if the connection is closed.
+// Err returns the disconnection error if the connection closed.
 func (c *Conn) Err() error {
 	return c.err
 }
@@ -104,12 +104,12 @@ func (c *Conn) start(ctx context.Context, settings Settings) {
 	c.pingPeriod = settings.PingPeriod
 	c.writeWait = settings.WriteWait
 
-	c.sendMessageCh = make(chan Message, settings.MessageChannelBufferSize)
 	c.streamCh = make(chan Data)
-	c.errorCh = make(chan error, 2)
-	c.readPumpFinishCh = make(chan struct{}, 1)
+	c.readErrorCh = make(chan error, 1)
+	c.readMessageCh = make(chan Message)
+	c.sendMessageCh = make(chan Message, settings.MessageChannelBufferSize)
 
-	go c.writePump(ctx)
+	go c.run(ctx)
 	go c.readPump()
 }
 
@@ -132,42 +132,51 @@ func (c *Conn) writeMessage(m Message) error {
 	return nil
 }
 
-func (c *Conn) writePump(ctx context.Context) {
-	defer c.conn.Close()
-
+func (c *Conn) run(ctx context.Context) {
 	ticker := time.NewTicker(c.pingPeriod)
 	defer ticker.Stop()
 
+loop:
 	for {
 		select {
 		case <-ctx.Done():
 			close(c.sendMessageCh)
 			for m := range c.sendMessageCh {
 				if err := c.writeMessage(m); err != nil {
-					c.errorCh <- err
-					return
+					c.err = err
+					break loop
 				}
 			}
 			if err := c.writeMessage(closeMessage); err != nil {
-				c.errorCh <- err
-				return
+				c.err = err
+				break loop
 			}
-			c.errorCh <- ctx.Err()
-			return
-		case <-c.readPumpFinishCh:
-			return
+			c.err = ctx.Err()
+			break loop
+		case err := <-c.readErrorCh:
+			c.err = err
+			break loop
+		case m := <-c.readMessageCh:
+			c.streamCh <- Data{Message: m}
 		case m := <-c.sendMessageCh:
 			if err := c.writeMessage(m); err != nil {
-				c.errorCh <- err
-				return
+				c.err = err
+				break loop
 			}
 		case <-ticker.C:
 			if err := c.writeMessage(pingMessage); err != nil {
-				c.errorCh <- err
-				return
+				c.err = err
+				break loop
 			}
 		}
 	}
+
+	c.conn.Close()
+	for range c.readMessageCh {
+	}
+
+	c.streamCh <- Data{EOS: true}
+	close(c.streamCh)
 }
 
 func (c *Conn) readPump() {
@@ -176,20 +185,15 @@ func (c *Conn) readPump() {
 	for {
 		messageType, data, err := c.conn.ReadMessage()
 		if err != nil {
-			c.errorCh <- err
+			c.readErrorCh <- err
 			break
 		}
 		switch messageType {
 		case websocket.TextMessage:
-			c.streamCh <- Data{Message: Message{TextMessageType, data}}
+			c.readMessageCh <- Message{TextMessageType, data}
 		case websocket.BinaryMessage:
-			c.streamCh <- Data{Message: Message{BinaryMessageType, data}}
+			c.readMessageCh <- Message{BinaryMessageType, data}
 		}
 	}
-
-	c.err = <-c.errorCh
-	c.readPumpFinishCh <- struct{}{}
-
-	c.streamCh <- Data{EOS: true}
-	close(c.streamCh)
+	close(c.readMessageCh)
 }

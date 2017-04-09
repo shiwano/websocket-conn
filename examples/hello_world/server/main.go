@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net/http"
 
 	"github.com/shiwano/websocket-conn"
@@ -17,9 +18,15 @@ func main() {
 			w.Write([]byte("Error"))
 			return
 		}
+		log.Println("Client connected")
 		d := <-c.Stream()
 		c.SendTextMessage(d.Message.Text() + " World")
 		cancel()
+		for d := range c.Stream() {
+			if d.EOS {
+				log.Println("Client closed: ", c.Err())
+			}
+		}
 	})
 	http.ListenAndServe(":5000", nil)
 }
