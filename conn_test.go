@@ -73,7 +73,7 @@ func TestConn(t *testing.T) {
 			t.Error(fmt.Errorf("Received an unexpected data to the client connetion: %v", d))
 		}
 	}
-	if c.Err().Error() != "context canceled" {
+	if c.Err() != context.Canceled {
 		t.Error(fmt.Errorf("Unexpected client connection error: %v", c.Err()))
 	}
 }
