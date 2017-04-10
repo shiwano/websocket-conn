@@ -186,6 +186,7 @@ loop:
 			c.errored <- err
 			break loop
 		}
+
 		var d Data
 		switch messageType {
 		case websocket.TextMessage:
@@ -196,17 +197,14 @@ loop:
 			continue
 		}
 
-	streamDataLoop:
-		for {
-			select {
-			case <-c.ctx.Done():
-				c.errored <- c.ctx.Err()
-				break loop
-			case <-c.writePumpFinished:
-				break loop
-			case c.streamDataReceived <- d:
-				break streamDataLoop
-			}
+		select {
+		case <-c.ctx.Done():
+			c.errored <- c.ctx.Err()
+			break loop
+		case <-c.writePumpFinished:
+			break loop
+		case c.streamDataReceived <- d:
+			break
 		}
 	}
 	close(c.readPumpFinished)
