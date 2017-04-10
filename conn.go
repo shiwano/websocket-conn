@@ -58,22 +58,24 @@ func UpgradeFromHTTP(ctx context.Context, settings Settings, w http.ResponseWrit
 
 // Conn represents a WebSocket connection.
 type Conn struct {
+	ctx  context.Context
 	conn *websocket.Conn
 	err  error
 
 	pingPeriod time.Duration
 	writeWait  time.Duration
 
-	streamCh      chan Data
-	readErrorCh   chan error
-	readMessageCh chan Message
-	sendMessageCh chan Message
+	streamDataReceived   chan Data
+	errored              chan error
+	readPumpFinished     chan struct{}
+	writePumpFinished    chan struct{}
+	sendMessageRequested chan Message
 }
 
 // Stream retrieve the peer's message data from the stream channel.
 // If the connection closed, it returns data with true of EOS flag at last.
 func (c *Conn) Stream() <-chan Data {
-	return c.streamCh
+	return c.streamDataReceived
 }
 
 // Err returns the disconnection error if the connection closed.
@@ -92,6 +94,7 @@ func (c *Conn) SendTextMessage(text string) error {
 }
 
 func (c *Conn) start(ctx context.Context, settings Settings) {
+	c.ctx = ctx
 	c.conn.SetReadLimit(settings.MaxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(settings.PongWait))
 	c.conn.SetPingHandler(func(string) error {
@@ -104,18 +107,19 @@ func (c *Conn) start(ctx context.Context, settings Settings) {
 	c.pingPeriod = settings.PingPeriod
 	c.writeWait = settings.WriteWait
 
-	c.streamCh = make(chan Data)
-	c.readErrorCh = make(chan error, 1)
-	c.readMessageCh = make(chan Message)
-	c.sendMessageCh = make(chan Message, settings.MessageChannelBufferSize)
+	c.streamDataReceived = make(chan Data)
+	c.errored = make(chan error, 2)
+	c.readPumpFinished = make(chan struct{})
+	c.writePumpFinished = make(chan struct{})
+	c.sendMessageRequested = make(chan Message, settings.MessageChannelBufferSize)
 
-	go c.run(ctx)
+	go c.writePump()
 	go c.readPump()
 }
 
 func (c *Conn) sendMessage(m Message) error {
 	select {
-	case c.sendMessageCh <- m:
+	case c.sendMessageRequested <- m:
 		return nil
 	default:
 		return ErrMessageChannelFull
@@ -132,68 +136,83 @@ func (c *Conn) writeMessage(m Message) error {
 	return nil
 }
 
-func (c *Conn) run(ctx context.Context) {
+func (c *Conn) writePump() {
+	defer c.conn.Close()
+
 	ticker := time.NewTicker(c.pingPeriod)
 	defer ticker.Stop()
 
 loop:
 	for {
 		select {
-		case <-ctx.Done():
-			close(c.sendMessageCh)
-			for m := range c.sendMessageCh {
+		case <-c.ctx.Done():
+			close(c.sendMessageRequested)
+			for m := range c.sendMessageRequested {
 				if err := c.writeMessage(m); err != nil {
-					c.err = err
+					c.errored <- err
 					break loop
 				}
 			}
 			if err := c.writeMessage(closeMessage); err != nil {
-				c.err = err
+				c.errored <- err
 				break loop
 			}
-			c.err = ctx.Err()
+			c.errored <- c.ctx.Err()
 			break loop
-		case err := <-c.readErrorCh:
-			c.err = err
+		case <-c.readPumpFinished:
 			break loop
-		case m := <-c.readMessageCh:
-			c.streamCh <- Data{Message: m}
-		case m := <-c.sendMessageCh:
+		case m := <-c.sendMessageRequested:
 			if err := c.writeMessage(m); err != nil {
-				c.err = err
+				c.errored <- err
 				break loop
 			}
 		case <-ticker.C:
 			if err := c.writeMessage(pingMessage); err != nil {
-				c.err = err
+				c.errored <- err
 				break loop
 			}
 		}
 	}
-
-	c.conn.Close()
-	for range c.readMessageCh {
-	}
-
-	c.streamCh <- Data{EOS: true}
-	close(c.streamCh)
+	close(c.writePumpFinished)
 }
 
 func (c *Conn) readPump() {
 	defer c.conn.Close()
 
+loop:
 	for {
 		messageType, data, err := c.conn.ReadMessage()
 		if err != nil {
-			c.readErrorCh <- err
-			break
+			c.errored <- err
+			break loop
 		}
+		var d Data
 		switch messageType {
 		case websocket.TextMessage:
-			c.readMessageCh <- Message{TextMessageType, data}
+			d = Data{Message: Message{TextMessageType, data}}
 		case websocket.BinaryMessage:
-			c.readMessageCh <- Message{BinaryMessageType, data}
+			d = Data{Message: Message{BinaryMessageType, data}}
+		default:
+			continue
+		}
+
+	streamDataLoop:
+		for {
+			select {
+			case <-c.ctx.Done():
+				c.errored <- c.ctx.Err()
+				break loop
+			case <-c.writePumpFinished:
+				break loop
+			case c.streamDataReceived <- d:
+				break streamDataLoop
+			}
 		}
 	}
-	close(c.readMessageCh)
+	close(c.readPumpFinished)
+	<-c.writePumpFinished
+
+	c.err = <-c.errored
+	c.streamDataReceived <- Data{EOS: true}
+	close(c.streamDataReceived)
 }
