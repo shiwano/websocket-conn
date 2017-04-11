@@ -19,14 +19,12 @@ func main() {
 			return
 		}
 		log.Println("Client connected")
-		d := <-c.Stream()
-		c.SendTextMessage(d.Message.Text() + " World")
+		m := <-c.Stream()
+		c.SendTextMessage(m.Text() + " World")
 		cancel()
-		for d := range c.Stream() {
-			if d.EOS {
-				log.Println("Client closed: ", c.Err())
-			}
+		for range c.Stream() {
 		}
+		log.Println("Client closed: ", c.Err())
 	})
 	http.ListenAndServe(":5000", nil)
 }

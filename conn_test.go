@@ -29,15 +29,13 @@ func TestConn(t *testing.T) {
 			t.Error(err)
 		}
 
-		d := <-c.Stream()
-		c.SendTextMessage(d.Message.Text() + " PONG")
-		d = <-c.Stream()
-		c.SendBinaryMessage(append(d.Message.Data, 4, 5, 6))
+		m := <-c.Stream()
+		c.SendTextMessage(m.Text() + " PONG")
+		m = <-c.Stream()
+		c.SendBinaryMessage(append(m.Data, 4, 5, 6))
 
-		for d := range c.Stream() {
-			if !d.EOS {
-				t.Error(fmt.Errorf("Received an unexpected data to the server connetion: %v", d))
-			}
+		for m := range c.Stream() {
+			t.Error(fmt.Errorf("Received an unexpected data to the server connetion: %v", m))
 		}
 		serverConnCh <- c.Err()
 	})
@@ -50,15 +48,15 @@ func TestConn(t *testing.T) {
 	}
 
 	c.SendTextMessage("PING")
-	d := <-c.Stream()
-	if d.Message.MessageType != conn.TextMessageType || d.Message.Text() != "PING PONG" {
-		t.Error(fmt.Errorf("Failed to process a text message: %v", d))
+	m := <-c.Stream()
+	if !m.IsTextMessage() || m.Text() != "PING PONG" {
+		t.Error(fmt.Errorf("Failed to process a text message: %v", m))
 	}
 
 	c.SendBinaryMessage([]byte{1, 2, 3})
-	d = <-c.Stream()
-	if d.Message.MessageType != conn.BinaryMessageType || !bytes.Equal(d.Message.Data, []byte{1, 2, 3, 4, 5, 6}) {
-		t.Error(fmt.Errorf("Failed to process a binary message: %v", d))
+	m = <-c.Stream()
+	if !m.IsBinaryMessage() || !bytes.Equal(m.Data, []byte{1, 2, 3, 4, 5, 6}) {
+		t.Error(fmt.Errorf("Failed to process a binary message: %v", m))
 	}
 
 	cancel()
@@ -68,10 +66,8 @@ func TestConn(t *testing.T) {
 		t.Error(fmt.Errorf("Unexpected server connection error: %v", serverConnErr))
 	}
 
-	for d := range c.Stream() {
-		if !d.EOS {
-			t.Error(fmt.Errorf("Received an unexpected data to the client connetion: %v", d))
-		}
+	for m := range c.Stream() {
+		t.Error(fmt.Errorf("Received an unexpected data to the client connetion: %v", m))
 	}
 	if c.Err() != context.Canceled {
 		t.Error(fmt.Errorf("Unexpected client connection error: %v", c.Err()))

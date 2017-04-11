@@ -16,15 +16,9 @@ func main() {
 			w.Write([]byte("Error"))
 			return
 		}
-		for d := range c.Stream() {
-			if d.EOS {
-				log.Println("client left because of: ", c.Err())
-				break
-			}
-
-			switch d.Message.MessageType {
-			case conn.TextMessageType:
-				text := d.Message.Text()
+		for m := range c.Stream() {
+			if m.IsTextMessage() {
+				text := m.Text()
 
 				if text == "How are you?" {
 					c.SendTextMessage("I'm fine, thank you")
@@ -33,6 +27,7 @@ func main() {
 				}
 			}
 		}
+		log.Println("client left because of: ", c.Err())
 	})
 	http.ListenAndServe(":5000", nil)
 }

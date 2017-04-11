@@ -65,17 +65,17 @@ type Conn struct {
 	pingPeriod time.Duration
 	writeWait  time.Duration
 
-	streamDataReceived   chan Data
+	messageReceived      chan Message
+	sendMessageRequested chan Message
 	errored              chan error
 	readPumpFinished     chan struct{}
 	writePumpFinished    chan struct{}
-	sendMessageRequested chan Message
 }
 
 // Stream retrieve the peer's message data from the stream channel.
 // If the connection closed, it returns data with true of EOS flag at last.
-func (c *Conn) Stream() <-chan Data {
-	return c.streamDataReceived
+func (c *Conn) Stream() <-chan Message {
+	return c.messageReceived
 }
 
 // Err returns the disconnection error if the connection closed.
@@ -107,7 +107,7 @@ func (c *Conn) start(ctx context.Context, settings Settings) {
 	c.pingPeriod = settings.PingPeriod
 	c.writeWait = settings.WriteWait
 
-	c.streamDataReceived = make(chan Data)
+	c.messageReceived = make(chan Message)
 	c.errored = make(chan error, 2)
 	c.readPumpFinished = make(chan struct{})
 	c.writePumpFinished = make(chan struct{})
@@ -187,12 +187,12 @@ loop:
 			break loop
 		}
 
-		var d Data
+		var m Message
 		switch messageType {
 		case websocket.TextMessage:
-			d = Data{Message: Message{TextMessageType, data}}
+			m = Message{TextMessageType, data}
 		case websocket.BinaryMessage:
-			d = Data{Message: Message{BinaryMessageType, data}}
+			m = Message{BinaryMessageType, data}
 		default:
 			continue
 		}
@@ -203,14 +203,12 @@ loop:
 			break loop
 		case <-c.writePumpFinished:
 			break loop
-		case c.streamDataReceived <- d:
-			break
+		case c.messageReceived <- m:
 		}
 	}
 	close(c.readPumpFinished)
 	<-c.writePumpFinished
 
 	c.err = <-c.errored
-	c.streamDataReceived <- Data{EOS: true}
-	close(c.streamDataReceived)
+	close(c.messageReceived)
 }

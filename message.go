@@ -19,6 +19,16 @@ type Message struct {
 	Data        []byte
 }
 
+// IsTextMessage determines whether the message is a text message.
+func (m Message) IsTextMessage() bool {
+	return m.MessageType == TextMessageType
+}
+
+// IsBinaryMessage determines whether the message is a binary message.
+func (m Message) IsBinaryMessage() bool {
+	return m.MessageType == BinaryMessageType
+}
+
 // Text returns text message data as string.
 func (m Message) Text() string {
 	if m.MessageType == TextMessageType {

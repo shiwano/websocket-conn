@@ -21,11 +21,13 @@ func main() {
 
 	for {
 		select {
-		case d := <-c.Stream():
-			if d.EOS {
+		case m, ok := <-c.Stream():
+			if !ok {
 				log.Fatal(c.Err())
 			}
-			log.Println(d.Message.Text())
+			if m.IsTextMessage() {
+				log.Println(m.Text())
+			}
 		case now := <-ticker.C:
 			c.SendTextMessage(fmt.Sprintf("%v", now))
 		}

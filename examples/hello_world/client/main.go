@@ -13,11 +13,9 @@ func main() {
 		log.Fatal(err)
 	}
 	c.SendTextMessage("Hello")
-	d := <-c.Stream()
-	log.Println(d.Message.Text()) // Hello World
-	for d := range c.Stream() {
-		if d.EOS {
-			log.Println("Closed: ", c.Err())
-		}
+	m := <-c.Stream()
+	log.Println(m.Text()) // Hello World
+	for range c.Stream() {
 	}
+	log.Println("Closed: ", c.Err())
 }

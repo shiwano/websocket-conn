@@ -17,7 +17,7 @@ func Connect(ctx context.Context, settings Settings, url string, requestHeader h
 func UpgradeFromHTTP(ctx context.Context, settings Settings, w http.ResponseWriter, r *http.Request) (*Conn, error)
 
 type Conn struct {
-	Stream() <-chan Data
+	Stream() <-chan Message
 	Err() error
 	SendBinaryMessage(data []byte) error
 	SendTextMessage(text string) error
@@ -33,7 +33,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"github.com/shiwano/websocket-conn"
 )
@@ -48,14 +47,10 @@ func main() {
 			w.Write([]byte("Error"))
 			return
 		}
-		log.Println("Client connected")
-		d := <-c.Stream()
-		c.SendTextMessage(d.Message.Text() + " World")
+		m := <-c.Stream()
+		c.SendTextMessage(m.Text() + " World")
 		cancel()
-		for d := range c.Stream() {
-			if d.EOS {
-				log.Println("Client closed: ", c.Err())
-			}
+		for range c.Stream() {
 		}
 	})
 	http.ListenAndServe(":5000", nil)
@@ -79,12 +74,9 @@ func main() {
 		log.Fatal(err)
 	}
 	c.SendTextMessage("Hello")
-	d := <-c.Stream()
-	log.Println(d.Message.Text()) // Hello World
-	for d := range c.Stream() {
-		if d.EOS {
-			log.Println("Closed: ", c.Err())
-		}
+	m := <-c.Stream()
+	log.Println(m.Text()) // Hello World
+	for range c.Stream() {
 	}
 }
 ```
