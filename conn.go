@@ -146,8 +146,9 @@ loop:
 	for {
 		select {
 		case <-c.ctx.Done():
-			close(c.sendMessageRequested)
-			for m := range c.sendMessageRequested {
+			messageCount := len(c.sendMessageRequested)
+			for i := 0; i < messageCount; i++ {
+				m := <-c.sendMessageRequested
 				if err := c.writeMessage(m); err != nil {
 					c.errored <- err
 					break loop
