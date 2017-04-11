@@ -58,7 +58,6 @@ func UpgradeFromHTTP(ctx context.Context, settings Settings, w http.ResponseWrit
 
 // Conn represents a WebSocket connection.
 type Conn struct {
-	ctx  context.Context
 	conn *websocket.Conn
 	err  error
 
@@ -94,7 +93,6 @@ func (c *Conn) SendTextMessage(text string) error {
 }
 
 func (c *Conn) start(ctx context.Context, settings Settings) {
-	c.ctx = ctx
 	c.conn.SetReadLimit(settings.MaxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(settings.PongWait))
 	c.conn.SetPingHandler(func(string) error {
@@ -113,8 +111,8 @@ func (c *Conn) start(ctx context.Context, settings Settings) {
 	c.writePumpFinished = make(chan struct{})
 	c.sendMessageRequested = make(chan Message, settings.MessageChannelBufferSize)
 
-	go c.writePump()
-	go c.readPump()
+	go c.writePump(ctx)
+	go c.readPump(ctx)
 }
 
 func (c *Conn) sendMessage(m Message) error {
@@ -136,7 +134,7 @@ func (c *Conn) writeMessage(m Message) error {
 	return nil
 }
 
-func (c *Conn) writePump() {
+func (c *Conn) writePump(ctx context.Context) {
 	defer c.conn.Close()
 
 	ticker := time.NewTicker(c.pingPeriod)
@@ -145,7 +143,7 @@ func (c *Conn) writePump() {
 loop:
 	for {
 		select {
-		case <-c.ctx.Done():
+		case <-ctx.Done():
 			messageCount := len(c.sendMessageRequested)
 			for i := 0; i < messageCount; i++ {
 				m := <-c.sendMessageRequested
@@ -158,7 +156,7 @@ loop:
 				c.errored <- err
 				break loop
 			}
-			c.errored <- c.ctx.Err()
+			c.errored <- ctx.Err()
 			break loop
 		case <-c.readPumpFinished:
 			break loop
@@ -177,7 +175,7 @@ loop:
 	close(c.writePumpFinished)
 }
 
-func (c *Conn) readPump() {
+func (c *Conn) readPump(ctx context.Context) {
 	defer c.conn.Close()
 
 loop:
@@ -199,8 +197,8 @@ loop:
 		}
 
 		select {
-		case <-c.ctx.Done():
-			c.errored <- c.ctx.Err()
+		case <-ctx.Done():
+			c.errored <- ctx.Err()
 			break loop
 		case <-c.writePumpFinished:
 			break loop
