@@ -72,7 +72,7 @@ type Conn struct {
 }
 
 // Stream retrieve the peer's message data from the stream channel.
-// If the connection closed, it returns data with true of EOS flag at last.
+// If the connection closed, this channel closes too.
 func (c *Conn) Stream() <-chan Message {
 	return c.messageReceived
 }
