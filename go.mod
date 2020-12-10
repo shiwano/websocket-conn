@@ -1,5 +1,5 @@
-module github.com/shiwano/websocket-conn
+module github.com/shiwano/websocket-conn/v3
 
 go 1.15
 
-require github.com/gorilla/websocket v1.4.0
+require github.com/gorilla/websocket v1.4.2

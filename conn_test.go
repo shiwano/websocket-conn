@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	wsconn "github.com/shiwano/websocket-conn"
+	"github.com/shiwano/websocket-conn/v3"
 )
 
 type jsonMessage struct {
