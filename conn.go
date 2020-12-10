@@ -2,6 +2,7 @@ package conn
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -90,6 +91,15 @@ func (c *Conn) SendBinaryMessage(data []byte) error {
 // SendTextMessage to the peer. This method is goroutine safe.
 func (c *Conn) SendTextMessage(text string) error {
 	return c.sendMessage(Message{websocket.TextMessage, []byte(text)})
+}
+
+// SendJSONMessage to the peer. This method is goroutine safe.
+func (c *Conn) SendJSONMessage(v interface{}) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return c.sendMessage(Message{websocket.TextMessage, data})
 }
 
 func (c *Conn) start(ctx context.Context, settings Settings) {

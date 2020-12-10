@@ -1,6 +1,8 @@
 package conn
 
 import (
+	"encoding/json"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -35,4 +37,9 @@ func (m Message) Text() string {
 		return string(m.Data)
 	}
 	return ""
+}
+
+// UnmarshalAsJSON unmarshals data as JSON.
+func (m Message) UnmarshalAsJSON(v interface{}) error {
+	return json.Unmarshal(m.Data, v)
 }
