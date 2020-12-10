@@ -93,8 +93,14 @@ func (c *Conn) SendTextMessage(text string) error {
 }
 
 func (c *Conn) start(ctx context.Context, settings Settings) {
+	if err := c.conn.SetReadDeadline(time.Now().Add(settings.PongWait)); err != nil {
+		c.conn.Close()
+		c.err = err
+		close(c.messageReceived)
+		return
+	}
+
 	c.conn.SetReadLimit(settings.MaxMessageSize)
-	c.conn.SetReadDeadline(time.Now().Add(settings.PongWait))
 	c.conn.SetPingHandler(func(string) error {
 		return c.sendMessage(pongMessage)
 	})
