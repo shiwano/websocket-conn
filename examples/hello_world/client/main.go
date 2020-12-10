@@ -4,11 +4,11 @@ import (
 	"context"
 	"log"
 
-	"github.com/shiwano/websocket-conn"
+	wsconn "github.com/shiwano/websocket-conn"
 )
 
 func main() {
-	c, _, err := conn.Connect(context.Background(), conn.DefaultSettings(), "ws://localhost:5000", nil)
+	c, _, err := wsconn.Connect(context.Background(), wsconn.DefaultSettings(), "ws://localhost:5000", nil)
 	if err != nil {
 		log.Fatal(err)
 	}

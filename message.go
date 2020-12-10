@@ -1,4 +1,4 @@
-package conn
+package wsconn
 
 import (
 	"encoding/json"

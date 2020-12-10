@@ -5,13 +5,13 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/shiwano/websocket-conn"
+	wsconn "github.com/shiwano/websocket-conn"
 )
 
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("client arrived")
-		c, err := conn.UpgradeFromHTTP(context.Background(), conn.DefaultSettings(), w, r)
+		c, err := wsconn.UpgradeFromHTTP(context.Background(), wsconn.DefaultSettings(), w, r)
 		if err != nil {
 			w.Write([]byte("Error"))
 			return

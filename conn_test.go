@@ -1,4 +1,4 @@
-package conn_test
+package wsconn_test
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	conn "github.com/shiwano/websocket-conn"
+	wsconn "github.com/shiwano/websocket-conn"
 )
 
 type jsonMessage struct {
@@ -29,7 +29,7 @@ func TestConn(t *testing.T) {
 	defer rootCtxCancel()
 
 	ts, url := newTestServer(func(w http.ResponseWriter, r *http.Request) {
-		c, err := conn.UpgradeFromHTTP(rootCtx, conn.DefaultSettings(), w, r)
+		c, err := wsconn.UpgradeFromHTTP(rootCtx, wsconn.DefaultSettings(), w, r)
 		if err != nil {
 			t.Error(err)
 		}
@@ -62,7 +62,7 @@ func TestConn(t *testing.T) {
 	defer ts.Close()
 
 	ctx, cancel := context.WithCancel(rootCtx)
-	c, _, err := conn.Connect(ctx, conn.DefaultSettings(), url, nil)
+	c, _, err := wsconn.Connect(ctx, wsconn.DefaultSettings(), url, nil)
 	if err != nil {
 		t.Error(err)
 	}
