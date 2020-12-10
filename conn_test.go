@@ -31,7 +31,7 @@ func TestConn(t *testing.T) {
 	ts, url := newTestServer(func(w http.ResponseWriter, r *http.Request) {
 		c, err := wsconn.UpgradeFromHTTP(rootCtx, wsconn.DefaultSettings(), w, r)
 		if err != nil {
-			t.Error(err)
+			t.Fatalf("failed to upgrade http connection: %v", err)
 		}
 
 		m := <-c.Stream()
@@ -64,7 +64,7 @@ func TestConn(t *testing.T) {
 	ctx, cancel := context.WithCancel(rootCtx)
 	c, _, err := wsconn.Connect(ctx, wsconn.DefaultSettings(), url, nil)
 	if err != nil {
-		t.Error(err)
+		t.Fatalf("failed to connect to the server: %v", err)
 	}
 
 	if err := c.SendTextMessage("PING"); err != nil {
@@ -114,5 +114,70 @@ func TestConn(t *testing.T) {
 
 	if c.Err() != context.Canceled {
 		t.Errorf("Unexpected client connection error: %v", c.Err())
+	}
+}
+
+func TestConn_Close_Client(t *testing.T) {
+	serverConnCh := make(chan error)
+	rootCtx, rootCtxCancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer rootCtxCancel()
+
+	ts, url := newTestServer(func(w http.ResponseWriter, r *http.Request) {
+		c, err := wsconn.UpgradeFromHTTP(rootCtx, wsconn.DefaultSettings(), w, r)
+		if err != nil {
+			t.Fatalf("failed to upgrade http connection: %v", err)
+		}
+
+		for m := range c.Stream() {
+			t.Fatalf("received an unexpected data to the server connetion: %v", m)
+		}
+		serverConnCh <- c.Err()
+	})
+	defer ts.Close()
+
+	ctx, cancel := context.WithCancel(rootCtx)
+	defer cancel()
+
+	c, _, err := wsconn.Connect(ctx, wsconn.DefaultSettings(), url, nil)
+	if err != nil {
+		t.Fatalf("failed to connect to the server: %v", err)
+	}
+
+	if err := c.Close(); err != nil {
+		t.Fatalf("failed to close: %v", err)
+	}
+
+	serverConnErr := <-serverConnCh
+	if serverConnErr.(*websocket.CloseError).Code != websocket.CloseNormalClosure {
+		t.Errorf("unexpected server connection error: %v", serverConnErr)
+	}
+}
+
+func TestConn_Close_Server(t *testing.T) {
+	rootCtx, rootCtxCancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer rootCtxCancel()
+
+	ts, url := newTestServer(func(w http.ResponseWriter, r *http.Request) {
+		c, err := wsconn.UpgradeFromHTTP(rootCtx, wsconn.DefaultSettings(), w, r)
+		if err != nil {
+			t.Fatalf("failed to upgrade http connection: %v", err)
+		}
+
+		if err := c.Close(); err != nil {
+			t.Fatalf("failed to close: %v", err)
+		}
+	})
+	defer ts.Close()
+
+	ctx, cancel := context.WithCancel(rootCtx)
+	defer cancel()
+
+	c, _, err := wsconn.Connect(ctx, wsconn.DefaultSettings(), url, nil)
+	if err != nil {
+		t.Fatalf("failed to connect to the server: %v", err)
+	}
+
+	for m := range c.Stream() {
+		t.Errorf("received an unexpected data to the client connetion: %v", m)
 	}
 }

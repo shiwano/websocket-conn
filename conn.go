@@ -12,7 +12,10 @@ import (
 
 var (
 	// ErrMessageChannelFull indicates that the connection's message channel is full.
-	ErrMessageChannelFull = errors.New("websocket-conn: Message channel is full")
+	ErrMessageChannelFull = errors.New("wsconn: message channel is full")
+
+	// ErrConnectionClosed indicates that the connection closed manually.
+	ErrConnectionClosed = errors.New("wsconn: connection closed")
 
 	closeMessage = Message{websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")}
 	pingMessage  = Message{websocket.PingMessage, []byte{}}
@@ -138,6 +141,15 @@ func (c *Conn) SendJSONMessage(v interface{}) error {
 	return c.sendMessage(Message{websocket.TextMessage, data})
 }
 
+// Close the connection.
+func (c *Conn) Close() error {
+	if err := c.writeMessage(closeMessage); err != nil {
+		return err
+	}
+	c.err = ErrConnectionClosed
+	return nil
+}
+
 func (c *Conn) start(ctx context.Context) {
 	go c.writePump(ctx)
 	go c.readPump(ctx)
@@ -236,6 +248,9 @@ loop:
 	close(c.readPumpFinished)
 	<-c.writePumpFinished
 
-	c.err = <-c.errored
+	err := <-c.errored
+	if err != nil {
+		c.err = err
+	}
 	close(c.messageReceived)
 }

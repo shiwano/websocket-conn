@@ -17,10 +17,11 @@ func Connect(ctx context.Context, settings Settings, url string, requestHeader h
 func UpgradeFromHTTP(ctx context.Context, settings Settings, w http.ResponseWriter, r *http.Request) (*Conn, error)
 
 type Conn struct {
-	Stream() <-chan Message
-	Err() error
-	SendBinaryMessage(data []byte) error
-	SendTextMessage(text string) error
+  Stream() <-chan Message
+  Err() error
+  SendBinaryMessage(data []byte) error
+  SendTextMessage(text string) error
+  Close() error
 }
 ```
 
@@ -32,28 +33,23 @@ Server:
 package main
 
 import (
-	"context"
-	"net/http"
-	"github.com/shiwano/websocket-conn"
+  "context"
+  "net/http"
+  wsconn "github.com/shiwano/websocket-conn/v3"
 )
 
 func main() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+  http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+    c, _ := wsconn.UpgradeFromHTTP(r.Context(), wsconn.DefaultSettings(), w, r)
 
-		c, err := conn.UpgradeFromHTTP(ctx, conn.DefaultSettings(), w, r)
-		if err != nil {
-			w.Write([]byte("Error"))
-			return
-		}
-		m := <-c.Stream()
-		c.SendTextMessage(m.Text() + " World")
-		cancel()
-		for range c.Stream() {
-		}
-	})
-	http.ListenAndServe(":5000", nil)
+    m := <-c.Stream()
+    c.SendTextMessage(m.Text() + " World")
+    m = <-c.Stream()
+    if m.Text() == "Close" {
+      c.Close()
+    }
+  })
+  http.ListenAndServe(":5000", nil)
 }
 ```
 
@@ -63,21 +59,25 @@ Client:
 package main
 
 import (
-	"context"
-	"log"
-	"github.com/shiwano/websocket-conn"
+  "context"
+  "log"
+  wsconn "github.com/shiwano/websocket-conn/v3"
 )
 
 func main() {
-	c, _, err := conn.Connect(context.Background(), conn.DefaultSettings(), "ws://localhost:5000", nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	c.SendTextMessage("Hello")
-	m := <-c.Stream()
-	log.Println(m.Text()) // Hello World
-	for range c.Stream() {
-	}
+  ctx, cancel := context.WithCancel(context.Background())
+  defer cancel()
+
+  c, _, _ := wsconn.Connect(ctx, wsconn.DefaultSettings(), "ws://localhost:5000", nil)
+
+  c.SendTextMessage("Hello")
+  m := <-c.Stream()
+  log.Println(m.Text()) // Hello World
+  c.SendTextMessage("Close")
+
+  for range c.Stream() {
+    // wait for closing.
+  }
 }
 ```
 
