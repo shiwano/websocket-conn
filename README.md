@@ -21,6 +21,7 @@ type Conn struct {
   Err() error
   SendBinaryMessage(data []byte) error
   SendTextMessage(text string) error
+  SendJSONMessage(v interface{}) error
   Close() error
 }
 ```
