@@ -3,7 +3,6 @@ package conn_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,26 +36,26 @@ func TestConn(t *testing.T) {
 
 		m := <-c.Stream()
 		if err := c.SendTextMessage(m.Text() + " PONG"); err != nil {
-			t.Fatal(err)
+			t.Fatalf("failed to send a text message: %v", err)
 		}
 
 		m = <-c.Stream()
 		if err := c.SendBinaryMessage(append(m.Data, 4, 5, 6)); err != nil {
-			t.Fatal(err)
+			t.Fatalf("failed to send a binary message: %v", err)
 		}
 
 		m = <-c.Stream()
 		var msg jsonMessage
 		if err := m.UnmarshalAsJSON(&msg); err != nil {
-			t.Fatal(err)
+			t.Fatalf("failed to unmarshal message as JSON: %v", err)
 		}
 		msg.Message += "bar"
 		if err := c.SendJSONMessage(&msg); err != nil {
-			t.Fatal(err)
+			t.Fatalf("failed to send a JSON message: %v", err)
 		}
 
 		for m := range c.Stream() {
-			t.Error(fmt.Errorf("Received an unexpected data to the server connetion: %v", m))
+			t.Fatalf("received an unexpected data to the server connetion: %v", m)
 		}
 		serverConnCh <- c.Err()
 	})
@@ -69,34 +68,34 @@ func TestConn(t *testing.T) {
 	}
 
 	if err := c.SendTextMessage("PING"); err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to send a text message: %v", err)
 	}
 
 	m := <-c.Stream()
 	if !m.IsTextMessage() || m.Text() != "PING PONG" {
-		t.Error(fmt.Errorf("Failed to process a text message: %v", m))
+		t.Errorf("failed to process a text message: %v", m)
 	}
 
 	if err := c.SendBinaryMessage([]byte{1, 2, 3}); err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to send a binary message: %v", err)
 	}
 
 	m = <-c.Stream()
 	if !m.IsBinaryMessage() || !bytes.Equal(m.Data, []byte{1, 2, 3, 4, 5, 6}) {
-		t.Error(fmt.Errorf("Failed to process a binary message: %v", m))
+		t.Errorf("failed to process a binary message: %v", m)
 	}
 
 	if err := c.SendJSONMessage(jsonMessage{Message: "foo"}); err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed to send a JSON message: %v", err)
 	}
 
 	m = <-c.Stream()
 	if !m.IsTextMessage() {
-		t.Error(fmt.Errorf("Failed to process a text message as JSON: %v", m))
+		t.Errorf("failed to process a text message as JSON: %v", m)
 	}
 	var msg jsonMessage
 	if err := m.UnmarshalAsJSON(&msg); err != nil {
-		t.Error(err)
+		t.Errorf("failed to unmarshal message as JSON: %v", err)
 	}
 	if msg.Message != "foobar" {
 		t.Errorf("want foobar, but got: %s", msg.Message)
@@ -106,13 +105,14 @@ func TestConn(t *testing.T) {
 
 	serverConnErr := <-serverConnCh
 	if serverConnErr.(*websocket.CloseError).Code != websocket.CloseNormalClosure {
-		t.Error(fmt.Errorf("Unexpected server connection error: %v", serverConnErr))
+		t.Errorf("unexpected server connection error: %v", serverConnErr)
 	}
 
 	for m := range c.Stream() {
-		t.Error(fmt.Errorf("Received an unexpected data to the client connetion: %v", m))
+		t.Errorf("received an unexpected data to the client connetion: %v", m)
 	}
+
 	if c.Err() != context.Canceled {
-		t.Error(fmt.Errorf("Unexpected client connection error: %v", c.Err()))
+		t.Errorf("Unexpected client connection error: %v", c.Err())
 	}
 }
