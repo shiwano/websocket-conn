@@ -19,6 +19,21 @@ var (
 	pongMessage  = Message{websocket.PongMessage, []byte{}}
 )
 
+// Conn represents a WebSocket connection.
+type Conn struct {
+	conn *websocket.Conn
+	err  error
+
+	pingPeriod time.Duration
+	writeWait  time.Duration
+
+	messageReceived      chan Message
+	sendMessageRequested chan Message
+	errored              chan error
+	readPumpFinished     chan struct{}
+	writePumpFinished    chan struct{}
+}
+
 // Connect to the peer. the requestHeader argument may be nil.
 func Connect(ctx context.Context, settings Settings, url string, requestHeader http.Header) (*Conn, *http.Response, error) {
 	dialer := new(websocket.Dialer)
@@ -33,8 +48,13 @@ func Connect(ctx context.Context, settings Settings, url string, requestHeader h
 	if err != nil {
 		return nil, response, err
 	}
-	c := &Conn{conn: conn}
-	c.start(ctx, settings)
+
+	c, err := newConn(conn, settings)
+	if err != nil {
+		return nil, response, err
+	}
+
+	c.start(ctx)
 	return c, response, nil
 }
 
@@ -52,24 +72,40 @@ func UpgradeFromHTTP(ctx context.Context, settings Settings, w http.ResponseWrit
 	if err != nil {
 		return nil, err
 	}
-	c := &Conn{conn: conn}
-	c.start(ctx, settings)
+
+	c, err := newConn(conn, settings)
+	if err != nil {
+		return nil, err
+	}
+
+	c.start(ctx)
 	return c, nil
 }
 
-// Conn represents a WebSocket connection.
-type Conn struct {
-	conn *websocket.Conn
-	err  error
+func newConn(conn *websocket.Conn, settings Settings) (*Conn, error) {
+	c := &Conn{conn: conn}
 
-	pingPeriod time.Duration
-	writeWait  time.Duration
+	if err := c.conn.SetReadDeadline(time.Now().Add(settings.PongWait)); err != nil {
+		c.conn.Close()
+		return nil, err
+	}
 
-	messageReceived      chan Message
-	sendMessageRequested chan Message
-	errored              chan error
-	readPumpFinished     chan struct{}
-	writePumpFinished    chan struct{}
+	c.conn.SetReadLimit(settings.MaxMessageSize)
+	c.conn.SetPingHandler(func(string) error {
+		return c.sendMessage(pongMessage)
+	})
+	c.conn.SetPongHandler(func(string) error {
+		return c.conn.SetReadDeadline(time.Now().Add(settings.PongWait))
+	})
+
+	c.pingPeriod = settings.PingPeriod
+	c.writeWait = settings.WriteWait
+	c.messageReceived = make(chan Message)
+	c.errored = make(chan error, 2)
+	c.readPumpFinished = make(chan struct{})
+	c.writePumpFinished = make(chan struct{})
+	c.sendMessageRequested = make(chan Message, settings.MessageChannelBufferSize)
+	return c, nil
 }
 
 // Stream retrieve the peer's message data from the stream channel.
@@ -102,31 +138,7 @@ func (c *Conn) SendJSONMessage(v interface{}) error {
 	return c.sendMessage(Message{websocket.TextMessage, data})
 }
 
-func (c *Conn) start(ctx context.Context, settings Settings) {
-	if err := c.conn.SetReadDeadline(time.Now().Add(settings.PongWait)); err != nil {
-		c.conn.Close()
-		c.err = err
-		close(c.messageReceived)
-		return
-	}
-
-	c.conn.SetReadLimit(settings.MaxMessageSize)
-	c.conn.SetPingHandler(func(string) error {
-		return c.sendMessage(pongMessage)
-	})
-	c.conn.SetPongHandler(func(string) error {
-		return c.conn.SetReadDeadline(time.Now().Add(settings.PongWait))
-	})
-
-	c.pingPeriod = settings.PingPeriod
-	c.writeWait = settings.WriteWait
-
-	c.messageReceived = make(chan Message)
-	c.errored = make(chan error, 2)
-	c.readPumpFinished = make(chan struct{})
-	c.writePumpFinished = make(chan struct{})
-	c.sendMessageRequested = make(chan Message, settings.MessageChannelBufferSize)
-
+func (c *Conn) start(ctx context.Context) {
 	go c.writePump(ctx)
 	go c.readPump(ctx)
 }
