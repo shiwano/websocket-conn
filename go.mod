@@ -1,4 +1,4 @@
-module github.com/shiwano/websocket-conn/v3
+module github.com/shiwano/websocket-conn/v4
 
 go 1.15
 

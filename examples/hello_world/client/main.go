@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	wsconn "github.com/shiwano/websocket-conn/v3"
+	wsconn "github.com/shiwano/websocket-conn/v4"
 )
 
 func main() {
