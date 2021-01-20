@@ -155,13 +155,13 @@ func TestConn_Close_Client(t *testing.T) {
 	for range c.Stream() {
 	}
 
-	if err := c.SendTextMessage("must fail"); err != wsconn.ErrMessageSendingFailed {
+	if err := c.SendTextMessage("must fail"); err != wsconn.ErrCloseSent {
 		t.Errorf("message sending must fail: %v", err)
 	}
-	if err := c.SendBinaryMessage([]byte{0}); err != wsconn.ErrMessageSendingFailed {
+	if err := c.SendBinaryMessage([]byte{0}); err != wsconn.ErrCloseSent {
 		t.Errorf("message sending must fail: %v", err)
 	}
-	if err := c.SendJSONMessage("must fail"); err != wsconn.ErrMessageSendingFailed {
+	if err := c.SendJSONMessage("must fail"); err != wsconn.ErrCloseSent {
 		t.Errorf("message sending must fail: %v", err)
 	}
 }

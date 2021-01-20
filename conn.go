@@ -3,16 +3,17 @@ package wsconn
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 var (
-	// ErrMessageSendingFailed indicates that the message sending failed because the connection already closed.
-	ErrMessageSendingFailed = errors.New("wsconn: the message sending failed because the connection already closed")
+	// ErrCloseSent is returned when the application writes a message to the
+	// connection after sending a close message.
+	ErrCloseSent = websocket.ErrCloseSent
 
 	closeMessage = Message{websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")}
 	pingMessage  = Message{websocket.PingMessage, []byte{}}
@@ -27,11 +28,11 @@ type Conn struct {
 	pingPeriod time.Duration
 	writeWait  time.Duration
 
-	messageReceived      chan Message
-	sendMessageRequested chan Message
-	errored              chan error
-	readPumpFinished     chan struct{}
-	writePumpFinished    chan struct{}
+	writeMessageMu    sync.Mutex
+	messageReceived   chan Message
+	errored           chan error
+	readPumpFinished  chan struct{}
+	writePumpFinished chan struct{}
 }
 
 // Connect to the peer. the requestHeader argument may be nil.
@@ -92,7 +93,7 @@ func newConn(conn *websocket.Conn, settings Settings) (*Conn, error) {
 
 	c.conn.SetReadLimit(settings.MaxMessageSize)
 	c.conn.SetPingHandler(func(string) error {
-		return c.sendMessage(pongMessage)
+		return c.writeMessage(pongMessage)
 	})
 	c.conn.SetPongHandler(func(string) error {
 		return c.conn.SetReadDeadline(time.Now().Add(settings.PongWait))
@@ -104,7 +105,6 @@ func newConn(conn *websocket.Conn, settings Settings) (*Conn, error) {
 	c.errored = make(chan error, 2)
 	c.readPumpFinished = make(chan struct{})
 	c.writePumpFinished = make(chan struct{})
-	c.sendMessageRequested = make(chan Message)
 	return c, nil
 }
 
@@ -121,12 +121,12 @@ func (c *Conn) Err() error {
 
 // SendBinaryMessage to the peer. This method is goroutine safe.
 func (c *Conn) SendBinaryMessage(data []byte) error {
-	return c.sendMessage(Message{websocket.BinaryMessage, data})
+	return c.writeMessage(Message{websocket.BinaryMessage, data})
 }
 
 // SendTextMessage to the peer. This method is goroutine safe.
 func (c *Conn) SendTextMessage(text string) error {
-	return c.sendMessage(Message{websocket.TextMessage, []byte(text)})
+	return c.writeMessage(Message{websocket.TextMessage, []byte(text)})
 }
 
 // SendJSONMessage to the peer. This method is goroutine safe.
@@ -135,7 +135,7 @@ func (c *Conn) SendJSONMessage(v interface{}) error {
 	if err != nil {
 		return err
 	}
-	return c.sendMessage(Message{websocket.TextMessage, data})
+	return c.writeMessage(Message{websocket.TextMessage, data})
 }
 
 // Close the connection.
@@ -151,16 +151,10 @@ func (c *Conn) start(ctx context.Context) {
 	go c.readPump(ctx)
 }
 
-func (c *Conn) sendMessage(m Message) error {
-	select {
-	case c.sendMessageRequested <- m:
-		return nil
-	case <-c.writePumpFinished:
-		return ErrMessageSendingFailed
-	}
-}
-
 func (c *Conn) writeMessage(m Message) error {
+	c.writeMessageMu.Lock()
+	defer c.writeMessageMu.Unlock()
+
 	if err := c.conn.SetWriteDeadline(time.Now().Add(c.writeWait)); err != nil {
 		return err
 	}
@@ -180,14 +174,6 @@ loop:
 	for {
 		select {
 		case <-ctx.Done():
-			messageCount := len(c.sendMessageRequested)
-			for i := 0; i < messageCount; i++ {
-				m := <-c.sendMessageRequested
-				if err := c.writeMessage(m); err != nil {
-					c.errored <- err
-					break loop
-				}
-			}
 			if err := c.writeMessage(closeMessage); err != nil {
 				c.errored <- err
 				break loop
@@ -196,11 +182,6 @@ loop:
 			break loop
 		case <-c.readPumpFinished:
 			break loop
-		case m := <-c.sendMessageRequested:
-			if err := c.writeMessage(m); err != nil {
-				c.errored <- err
-				break loop
-			}
 		case <-ticker.C:
 			if err := c.writeMessage(pingMessage); err != nil {
 				c.errored <- err
