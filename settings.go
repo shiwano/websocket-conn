@@ -9,15 +9,14 @@ import (
 
 // Settings represents connection settings.
 type Settings struct {
-	WriteWait                time.Duration
-	PongWait                 time.Duration
-	PingPeriod               time.Duration
-	HandshakeTimeout         time.Duration
-	MessageChannelBufferSize int
-	MaxMessageSize           int64
-	ReadBufferSize           int
-	WriteBufferSize          int
-	Subprotocols             []string
+	WriteWait        time.Duration
+	PongWait         time.Duration
+	PingPeriod       time.Duration
+	HandshakeTimeout time.Duration
+	MaxMessageSize   int64
+	ReadBufferSize   int
+	WriteBufferSize  int
+	Subprotocols     []string
 
 	DialerSettings   *DialerSettings
 	UpgraderSettings *UpgraderSettings
@@ -38,13 +37,12 @@ type UpgraderSettings struct {
 // DefaultSettings returns default settings.
 func DefaultSettings() Settings {
 	return Settings{
-		WriteWait:                10 * time.Second,
-		PongWait:                 60 * time.Second,
-		PingPeriod:               54 * time.Second,
-		MessageChannelBufferSize: 256,
-		MaxMessageSize:           2048,
-		ReadBufferSize:           4096,
-		WriteBufferSize:          4096,
+		WriteWait:       10 * time.Second,
+		PongWait:        60 * time.Second,
+		PingPeriod:      54 * time.Second,
+		MaxMessageSize:  2048,
+		ReadBufferSize:  4096,
+		WriteBufferSize: 4096,
 
 		DialerSettings:   new(DialerSettings),
 		UpgraderSettings: new(UpgraderSettings),

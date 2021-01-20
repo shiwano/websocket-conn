@@ -151,6 +151,19 @@ func TestConn_Close_Client(t *testing.T) {
 	if serverConnErr.(*websocket.CloseError).Code != websocket.CloseNormalClosure {
 		t.Errorf("unexpected server connection error: %v", serverConnErr)
 	}
+
+	for range c.Stream() {
+	}
+
+	if err := c.SendTextMessage("must fail"); err != wsconn.ErrMessageSendingFailed {
+		t.Errorf("message sending must fail: %v", err)
+	}
+	if err := c.SendBinaryMessage([]byte{0}); err != wsconn.ErrMessageSendingFailed {
+		t.Errorf("message sending must fail: %v", err)
+	}
+	if err := c.SendJSONMessage("must fail"); err != wsconn.ErrMessageSendingFailed {
+		t.Errorf("message sending must fail: %v", err)
+	}
 }
 
 func TestConn_Close_Server(t *testing.T) {

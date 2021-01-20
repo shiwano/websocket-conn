@@ -11,11 +11,8 @@ import (
 )
 
 var (
-	// ErrMessageChannelFull indicates that the connection's message channel is full.
-	ErrMessageChannelFull = errors.New("wsconn: message channel is full")
-
-	// ErrConnectionClosed indicates that the connection closed manually.
-	ErrConnectionClosed = errors.New("wsconn: connection closed")
+	// ErrMessageSendingFailed indicates that the message sending failed because the connection already closed.
+	ErrMessageSendingFailed = errors.New("wsconn: the message sending failed because the connection already closed")
 
 	closeMessage = Message{websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")}
 	pingMessage  = Message{websocket.PingMessage, []byte{}}
@@ -107,7 +104,7 @@ func newConn(conn *websocket.Conn, settings Settings) (*Conn, error) {
 	c.errored = make(chan error, 2)
 	c.readPumpFinished = make(chan struct{})
 	c.writePumpFinished = make(chan struct{})
-	c.sendMessageRequested = make(chan Message, settings.MessageChannelBufferSize)
+	c.sendMessageRequested = make(chan Message)
 	return c, nil
 }
 
@@ -146,7 +143,6 @@ func (c *Conn) Close() error {
 	if err := c.writeMessage(closeMessage); err != nil {
 		return err
 	}
-	c.err = ErrConnectionClosed
 	return nil
 }
 
@@ -159,8 +155,8 @@ func (c *Conn) sendMessage(m Message) error {
 	select {
 	case c.sendMessageRequested <- m:
 		return nil
-	default:
-		return ErrMessageChannelFull
+	case <-c.writePumpFinished:
+		return ErrMessageSendingFailed
 	}
 }
 
