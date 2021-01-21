@@ -44,9 +44,11 @@ func main() {
     c, _ := wsconn.UpgradeFromHTTP(r.Context(), wsconn.DefaultSettings(), w, r)
 
     for m := range c.Stream() {
-      switch m.Text() {
+      switch t := m.Text(); t {
       case "Hello":
-        c.SendTextMessage(m.Text() + " World")
+        if err := c.SendTextMessage(t + " World"); err != nil {
+          log.Fatal(err)
+        }
       case "Close":
         c.Close()
       }
@@ -75,7 +77,7 @@ func main() {
 
   c.SendTextMessage("Hello")
   m := <-c.Stream()
-  log.Println(m.Text()) // Hello World
+  log.Println(m.Text()) // Output: Hello World
   c.SendTextMessage("Close")
 
   for range c.Stream() {

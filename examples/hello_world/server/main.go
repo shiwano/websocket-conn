@@ -17,9 +17,9 @@ func main() {
 		log.Println("Client connected")
 
 		for m := range c.Stream() {
-			switch m.Text() {
+			switch t := m.Text(); t {
 			case "Hello":
-				if err := c.SendTextMessage(m.Text() + " World"); err != nil {
+				if err := c.SendTextMessage(t + " World"); err != nil {
 					log.Fatal(err)
 				}
 			case "Close":
