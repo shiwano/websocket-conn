@@ -36,18 +36,20 @@ package main
 import (
   "context"
   "net/http"
-  wsconn "github.com/shiwano/websocket-conn/v3"
+  wsconn "github.com/shiwano/websocket-conn/v4"
 )
 
 func main() {
   http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
     c, _ := wsconn.UpgradeFromHTTP(r.Context(), wsconn.DefaultSettings(), w, r)
 
-    m := <-c.Stream()
-    c.SendTextMessage(m.Text() + " World")
-    m = <-c.Stream()
-    if m.Text() == "Close" {
-      c.Close()
+    for m := range c.Stream() {
+      switch m.Text() {
+      case "Hello":
+        c.SendTextMessage(m.Text() + " World")
+      case "Close":
+        c.Close()
+      }
     }
   })
   http.ListenAndServe(":5000", nil)
@@ -62,7 +64,7 @@ package main
 import (
   "context"
   "log"
-  wsconn "github.com/shiwano/websocket-conn/v3"
+  wsconn "github.com/shiwano/websocket-conn/v4"
 )
 
 func main() {

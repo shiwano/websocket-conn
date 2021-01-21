@@ -16,12 +16,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	c.SendTextMessage("Hello")
+	if err := c.SendTextMessage("Hello"); err != nil {
+		log.Fatal(err)
+	}
+
 	m := <-c.Stream()
 	log.Println(m.Text()) // Hello World
-	c.SendTextMessage("Close")
+
+	if err := c.SendTextMessage("Close"); err != nil {
+		log.Fatal(err)
+	}
 
 	for range c.Stream() {
+		// wait for closing.
 	}
 	log.Println("Closed: ", c.Err())
 }

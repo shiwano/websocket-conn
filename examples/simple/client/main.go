@@ -14,7 +14,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	c.SendTextMessage("How are you?")
+
+	if err := c.SendTextMessage("How are you?"); err != nil {
+		log.Fatal(err)
+	}
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -29,7 +32,9 @@ func main() {
 				log.Println(m.Text())
 			}
 		case now := <-ticker.C:
-			c.SendTextMessage(fmt.Sprintf("%v", now))
+			if err := c.SendTextMessage(fmt.Sprintf("%v", now)); err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 }

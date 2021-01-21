@@ -13,7 +13,7 @@ func main() {
 		log.Println("client arrived")
 		c, err := wsconn.UpgradeFromHTTP(context.Background(), wsconn.DefaultSettings(), w, r)
 		if err != nil {
-			w.Write([]byte("Error"))
+			log.Fatal(err)
 			return
 		}
 		for m := range c.Stream() {
@@ -21,13 +21,19 @@ func main() {
 				text := m.Text()
 
 				if text == "How are you?" {
-					c.SendTextMessage("I'm fine, thank you")
+					if err := c.SendTextMessage("I'm fine, thank you"); err != nil {
+						log.Fatal(err)
+					}
 				} else {
-					c.SendTextMessage("Ticktack: " + text)
+					if err := c.SendTextMessage("Ticktack: " + text); err != nil {
+						log.Fatal(err)
+					}
 				}
 			}
 		}
 		log.Println("client left because of: ", c.Err())
 	})
-	http.ListenAndServe(":5000", nil)
+	if err := http.ListenAndServe(":5000", nil); err != nil {
+		log.Fatal(err)
+	}
 }
